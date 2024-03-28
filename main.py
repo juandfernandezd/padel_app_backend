@@ -16,6 +16,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+match = {}
+
 class Partido(BaseModel):
     pareja1Jugador1: str
     pareja1Jugador2: str
@@ -26,8 +28,14 @@ class Partido(BaseModel):
 
 @app.post("/registro_partido")
 async def registro_partido(partido: Partido):
+    global match
     print(f'receiving new match... {partido}')
+    match = partido
     return partido
+
+@app.get("/obtener_partido")
+async def obtener_partido():
+    return match
 
 
 if __name__ == "__main__":
