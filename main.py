@@ -18,6 +18,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+match = {}
+
 class Partido(BaseModel):
     pareja1Jugador1: str
     pareja1Jugador2: str
@@ -79,6 +81,9 @@ async def registro_partido(partido: Partido):
     conn.commit()
     conn.close()
     
+    global match
+    print(f'receiving new match... {partido}')
+    match = partido
     return partido
 
 @app.get("/obtener_partido")
@@ -100,6 +105,7 @@ async def obtener_partido():
         # Si no hay un partido activo, devuelve un JSON vacío
         return {}
 
+    return match
 
 
 if __name__ == "__main__":
