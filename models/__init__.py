@@ -1,2 +1,2 @@
-from .api_models import Partido, WSMessage
+from .api_models import *
 from .ws_models import ConnectionManager

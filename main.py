@@ -1,7 +1,7 @@
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from models import (ConnectionManager, Partido, WSMessage)
+from models import (ConnectionManager, Partido, Puntaje, WSMessage)
 
 
 app = FastAPI()
@@ -50,6 +50,16 @@ async def obtener_partido():
     return {
         'match': match,
         'status': 'ok'
+    }
+
+@app.post('/enviar_puntaje')
+async def enviar_puntaje(puntaje: Puntaje):
+    await manager.broadcast(
+        WSMessage(msg_type='score', content={'pareja': puntaje.pareja, 'games': puntaje.games})
+    )
+    return {
+        'status': 'ok',
+        'message': 'mensaje enviado con exito a todos los peers'
     }
 
 
