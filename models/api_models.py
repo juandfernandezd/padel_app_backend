@@ -12,6 +12,10 @@ class Puntaje(BaseModel):
     pareja: int
     games: int
 
+class Saque(BaseModel):
+    pareja: int
+    jugador: int
+
 class WSMessage(BaseModel):
     msg_type: str
     content: Union[Dict, Partido, None]
