@@ -8,14 +8,20 @@ class Partido(BaseModel):
     pareja2Jugador2: str
     numSets: int
 
+
 class Puntaje(BaseModel):
-    pareja: int
-    games: int
+    points: int = 0
+    games: int = 0
+    sets: int = 0
+
+class PuntajeActual(BaseModel):
+    puntaje_pareja_1: Puntaje
+    puntaje_pareja_2: Puntaje
+    set: int
 
 class Saque(BaseModel):
     pareja: int
-    jugador: int
 
 class WSMessage(BaseModel):
     msg_type: str
-    content: Union[Dict, Partido, None]
+    content: Union[Dict, Partido, PuntajeActual, None]
