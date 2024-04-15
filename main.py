@@ -19,14 +19,16 @@ from models import (
 # no se puede instala ni trabaja con GPIO en una dispositivo diferente a una raspberry pi
 try:
     import RPi.GPIO as GPIO
+    print('using real GPIO')
 except (RuntimeError, ModuleNotFoundError):
     from utils import FakeGPIO as GPIO
+    print('using fake GPIO')
 
 PIN_PAREJA1 = 17
 PIN_PAREJA2 = 18
 GPIO.setmode(GPIO.BCM)
-GPIO.setup(17, GPIO.IN)
-GPIO.setup(18, GPIO.IN)
+GPIO.setup(PIN_PAREJA1, GPIO.IN)
+GPIO.setup(PIN_PAREJA2, GPIO.IN)
 
 
 
@@ -48,10 +50,6 @@ match = None
 puntaje_actual = None
 puntaje_pareja_1 = None
 puntaje_pareja_2 = None
-# referencia a los pines GPIO
-pin_pareja1 = 17
-pin_pareja2 = 18
-
 
 # utils
 def cambiar_set():
@@ -183,7 +181,7 @@ async def obtener_partido():
 @app.get('/enviar_puntaje/{pin}')
 async def enviar_puntaje(pin: int):
 
-    if pin == pin_pareja1:
+    if pin == PIN_PAREJA1:
         await cambiar_puntaje(puntaje_pareja_1, puntaje_pareja_2)
     else:
         await cambiar_puntaje(puntaje_pareja_2, puntaje_pareja_1)
@@ -214,13 +212,16 @@ async def finalizar_partido():
     }
 
 # GPIO connection
-def listen_gpio():
+async def listen_gpio():
+    counter = 1
     while True:
-        if GPIO.input(17): 
-            asyncio.run(cambiar_puntaje(puntaje_pareja_1, puntaje_pareja_2))
+        if GPIO.input(PIN_PAREJA1):
+            print(f'reading from GPIO pin pareja 1: pulse {counter}')
+            await cambiar_puntaje(puntaje_pareja_1, puntaje_pareja_2)
+            counter += 1
         
-        elif GPIO.input(18):
-            asyncio.run(cambiar_puntaje(puntaje_pareja_2, puntaje_pareja_1))
+        elif GPIO.input(PIN_PAREJA2):
+            await cambiar_puntaje(puntaje_pareja_2, puntaje_pareja_1)
 
 # server
 if __name__ == "__main__":
