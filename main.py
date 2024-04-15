@@ -1,5 +1,7 @@
 import uvicorn
 import math
+import asyncio
+import threading
 from fastapi import (
     FastAPI,
     WebSocket, 
@@ -13,6 +15,19 @@ from models import (
     Puntaje,
     WSMessage
 )
+
+# no se puede instala ni trabaja con GPIO en una dispositivo diferente a una raspberry pi
+try:
+    import RPi.GPIO as GPIO
+except (RuntimeError, ModuleNotFoundError):
+    from utils import FakeGPIO as GPIO
+
+PIN_PAREJA1 = 17
+PIN_PAREJA2 = 18
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(17, GPIO.IN)
+GPIO.setup(18, GPIO.IN)
+
 
 
 app = FastAPI()
@@ -198,6 +213,17 @@ async def finalizar_partido():
         'message': 'se ha finalizado el partido'
     }
 
+# GPIO connection
+def listen_gpio():
+    while True:
+        if GPIO.input(17): 
+            asyncio.run(cambiar_puntaje(puntaje_pareja_1, puntaje_pareja_2))
+        
+        elif GPIO.input(18):
+            asyncio.run(cambiar_puntaje(puntaje_pareja_2, puntaje_pareja_1))
+
 # server
 if __name__ == "__main__":
+    gpio_thread = threading.Thread(target=listen_gpio)
+    gpio_thread.start()
     uvicorn.run(app, host="0.0.0.0", port=8000)
