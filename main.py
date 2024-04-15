@@ -213,6 +213,7 @@ async def finalizar_partido():
 
 # GPIO connection
 async def listen_gpio():
+    global PIN_PAREJA1, PIN_PAREJA2
     counter = 1
     while True:
         if GPIO.input(PIN_PAREJA1):
@@ -223,8 +224,13 @@ async def listen_gpio():
         elif GPIO.input(PIN_PAREJA2):
             await cambiar_puntaje(puntaje_pareja_2, puntaje_pareja_1)
 
+def run_gpio_listener():
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(listen_gpio())
+    loop.close()
+
 # server
 if __name__ == "__main__":
-    gpio_thread = threading.Thread(target=listen_gpio)
+    gpio_thread = threading.Thread(target=run_gpio_listener)
     gpio_thread.start()
     uvicorn.run(app, host="0.0.0.0", port=8000)
