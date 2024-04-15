@@ -9,3 +9,7 @@ class FakeGPIO:
     @staticmethod
     def setup(pin: int, port_type: str):
         pass
+
+    @staticmethod
+    def input(pin: int):
+        pass
