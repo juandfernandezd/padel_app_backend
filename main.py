@@ -1,7 +1,8 @@
 import uvicorn
 import math
 import asyncio
-import threading
+import os
+from dotenv import load_dotenv
 from fastapi import (
     FastAPI,
     WebSocket, 
@@ -16,20 +17,21 @@ from models import (
     WSMessage
 )
 
-# no se puede instala ni trabaja con GPIO en una dispositivo diferente a una raspberry pi
-try:
-    import RPi.GPIO as GPIO
-    print('using real GPIO')
-except (RuntimeError, ModuleNotFoundError):
-    from utils import FakeGPIO as GPIO
-    print('using fake GPIO')
+load_dotenv()
+device = os.getenv('DEVICE', 'PC')
+
+if device == 'PC':
+    print('import fake gpio')
+    from utils import Button
+else:
+    from gpiozero import Button
+    
 
 PIN_PAREJA1 = 17
 PIN_PAREJA2 = 18
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(PIN_PAREJA1, GPIO.IN)
-GPIO.setup(PIN_PAREJA2, GPIO.IN)
 
+button_pareja1 = Button(PIN_PAREJA1)
+button_pareja2 = Button(PIN_PAREJA2)
 
 
 app = FastAPI()
@@ -211,26 +213,15 @@ async def finalizar_partido():
         'message': 'se ha finalizado el partido'
     }
 
-# GPIO connection
-async def listen_gpio():
-    global PIN_PAREJA1, PIN_PAREJA2
-    counter = 1
-    while True:
-        if GPIO.input(PIN_PAREJA1):
-            print(f'reading from GPIO pin pareja 1: pulse {counter}')
-            await cambiar_puntaje(puntaje_pareja_1, puntaje_pareja_2)
-            counter += 1
-        
-        elif GPIO.input(PIN_PAREJA2):
-            await cambiar_puntaje(puntaje_pareja_2, puntaje_pareja_1)
+def handle_button_pareja1():
+    asyncio.create_task(cambiar_puntaje(puntaje_pareja_1, puntaje_pareja_2))
 
-def run_gpio_listener():
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(listen_gpio())
-    loop.close()
+def handle_button_pareja2():
+    asyncio.create_task(cambiar_puntaje(puntaje_pareja_2, puntaje_pareja_1))
+
+button_pareja1.when_pressed = handle_button_pareja1
+button_pareja2.when_pressed = handle_button_pareja2
 
 # server
 if __name__ == "__main__":
-    gpio_thread = threading.Thread(target=run_gpio_listener)
-    gpio_thread.start()
     uvicorn.run(app, host="0.0.0.0", port=8000)

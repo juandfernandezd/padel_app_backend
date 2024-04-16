@@ -1,15 +1,6 @@
-class FakeGPIO:
-    BCM = 'BCM'
-    IN = 'IN'
+class Button:
 
-    @staticmethod
-    def setmode(mode: str):
-        pass
-    
-    @staticmethod
-    def setup(pin: int, port_type: str):
-        pass
+    def __init__(self, pin: int):
+        self.when_pressed = None
+        print(f'init fake button in GPIO pin: {pin}')
 
-    @staticmethod
-    def input(pin: int):
-        pass
