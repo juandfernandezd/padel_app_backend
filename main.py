@@ -2,15 +2,16 @@ import uvicorn
 import math
 import asyncio
 import os
+from signal import pause
 from dotenv import load_dotenv
 from fastapi import (
     FastAPI,
-    WebSocket, 
+    WebSocket,
     WebSocketDisconnect
 )
 from fastapi.middleware.cors import CORSMiddleware
 from models import (
-    ConnectionManager, 
+    ConnectionManager,
     Partido,
     PuntajeActual,
     Puntaje,
@@ -25,7 +26,7 @@ if device == 'PC':
     from utils import Button
 else:
     from gpiozero import Button
-    
+
 
 PIN_PAREJA1 = 17
 PIN_PAREJA2 = 18
@@ -122,10 +123,10 @@ def construir_mensaje():
     msg = ''
     if puntaje_pareja_1.sets > puntaje_pareja_2.sets:
         msg = f'Felicitaciones {match.pareja1Jugador1} y {match.pareja1Jugador2} han ganado el partido..!'
-    
+
     elif puntaje_pareja_2.sets > puntaje_pareja_1.sets:
         msg = f'Felicitaciones {match.pareja2Jugador1} y {match.pareja2Jugador2} han ganado el partido..!'
-    
+
     else:
         msg = 'El partido ha quedado en empate'
 
@@ -214,10 +215,14 @@ async def finalizar_partido():
     }
 
 def handle_button_pareja1():
-    asyncio.create_task(cambiar_puntaje(puntaje_pareja_1, puntaje_pareja_2))
+    async def _handle_button():
+        await cambiar_puntaje(puntaje_pareja_1, puntaje_pareja_2)
+    asyncio.run(_handle_button())
 
 def handle_button_pareja2():
-    asyncio.create_task(cambiar_puntaje(puntaje_pareja_2, puntaje_pareja_1))
+    async def _handle_button():
+        await cambiar_puntaje(puntaje_pareja_2, puntaje_pareja_1)
+    asyncio.run(_handle_button())
 
 button_pareja1.when_pressed = handle_button_pareja1
 button_pareja2.when_pressed = handle_button_pareja2
