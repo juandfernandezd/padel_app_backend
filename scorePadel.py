@@ -1,6 +1,9 @@
 import sys
+import asyncio
+import requests
 from PyQt5.QtWidgets import QApplication, QVBoxLayout, QHBoxLayout, QWidget, QLabel, QFrame, QMainWindow, QGridLayout
 from PyQt5.QtCore import QTimer, QDateTime, QTime, Qt
+from websockets import connect
 
 class TemplateWidget(QWidget):
     def __init__(self):
@@ -9,6 +12,7 @@ class TemplateWidget(QWidget):
         self.label_time = QLabel()
         self.setWindowTitle("SCOREPADEL")
         self.initUI()
+        self.websocket = None
         
 
     def initUI(self):
@@ -38,7 +42,8 @@ class TemplateWidget(QWidget):
         # fila superior con el tiempo del partido
         layout_superior = QHBoxLayout()
         self.label_match_time = QLabel("Match time")
-        self.label_time = QLabel()  # Agregar el QLabel para mostrar el tiempo
+        self.label_match_time.setStyleSheet("font-weight: bold; font-size: 18px;")
+        self.label_time = QLabel()  
         layout_superior.addWidget(self.label_match_time)
         layout_superior.addStretch(1)
         layout_superior.addWidget(self.label_time)
@@ -88,11 +93,14 @@ class TemplateWidget(QWidget):
         self.timer.timeout.connect(self.actualizar_reloj)
         self.timer.start(1000)
 
-        self.timer_transcurrido = QTimer(self)  # Cambiar el nombre del timer
+        self.timer_transcurrido = QTimer(self)
         self.timer_transcurrido.timeout.connect(self.actualizar_tiempo_transcurrido)
-        self.timer_transcurrido.start(1000)  # Usar otro timer para evitar la colisión
+        self.timer_transcurrido.start(1000)
 
         self.show()
+
+        # Iniciar la conexión WebSocket
+        asyncio.ensure_future(self.connect_to_websocket())
 
     def actualizar_reloj(self):
         tiempo_actual = QTime.currentTime()
@@ -107,12 +115,55 @@ class TemplateWidget(QWidget):
         segundos = tiempo_transcurrido % 60
         texto_tiempo_transcurrido = f"{horas:02d}:{minutos:02d}:{segundos:02d}"
         self.label_tiempo_transcurrido.setText(texto_tiempo_transcurrido)
-        self.label_time.setText(texto_tiempo_transcurrido) 
+        self.label_time.setText(texto_tiempo_transcurrido)
+        
+    async def connect_to_websocket(self):
+        # URL del servidor WebSocket
+        uri = "ws://localhost:8000/ws"
+        try:
+            async with connect(uri) as websocket:
+                self.websocket = websocket
+                async for message in websocket:
+                    # Actualizar la interfaz con el mensaje recibido
+                    self.label_time.setText(message)
+        except Exception as e:
+            print(f"Error de conexión WebSocket: {e}")
+
+class WaitingWidget(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("SCOREPADEL")
+        self.initUI()
+
+    def initUI(self):
+        layout_principal = QVBoxLayout(self)
+        mensaje = QLabel("Esperando partido...")
+        mensaje.setStyleSheet("font-size: 40px; font-weight: bold; color: #666;")
+        layout_principal.addWidget(mensaje)
+        self.setGeometry(300, 300, 400, 200)
+
+def check_match_status():
+    url = "http://localhost:8000/registro_partido"
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            app = QApplication(sys.argv)
+            ventana = TemplateWidget()
+            ventana.showMaximized()
+            sys.exit(app.exec_())
+        else:
+            app = QApplication(sys.argv)
+            ventana = WaitingWidget()
+            ventana.showMaximized()
+            sys.exit(app.exec_())
+    except Exception as e:
+        print(f"Error al verificar el estado del partido: {e}")
 
 if __name__ == '__main__':
-    app = QApplication(sys.argv)
+    #app = QApplication(sys.argv)
     #window = MatchTemplate()
     #ventana = TablaConSeparadores()
-    ventana = TemplateWidget()
-    ventana.showMaximized()
-    sys.exit(app.exec_())
+    #ventana = TemplateWidget()
+    #ventana.showMaximized()
+    #sys.exit(app.exec_())
+    check_match_status()
