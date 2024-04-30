@@ -215,10 +215,10 @@ async def finalizar_partido():
     }
 
 def handle_button_pareja1():
-    asyncio.create_task(cambiar_puntaje(puntaje_pareja_1, puntaje_pareja_2))
+    asyncio.run(cambiar_puntaje(puntaje_pareja_1, puntaje_pareja_2))
 
 def handle_button_pareja2():
-    asyncio.create_task(cambiar_puntaje(puntaje_pareja_2, puntaje_pareja_1))
+    asyncio.run(cambiar_puntaje(puntaje_pareja_2, puntaje_pareja_1))
 
 button_pareja1.when_pressed = handle_button_pareja1
 button_pareja2.when_pressed = handle_button_pareja2
