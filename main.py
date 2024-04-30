@@ -5,10 +5,14 @@ import os
 from dotenv import load_dotenv
 from fastapi import (
     FastAPI,
+    Request,
     WebSocket, 
     WebSocketDisconnect
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
 from models import (
     ConnectionManager, 
     Partido,
@@ -35,6 +39,9 @@ button_pareja2 = Button(PIN_PAREJA2)
 
 
 app = FastAPI()
+templates = Jinja2Templates(directory="./build")
+app.mount("/static", StaticFiles(directory="./build/static"), name="static")
+
 origins = ['*']
 
 
@@ -221,6 +228,12 @@ def handle_button_pareja2():
 
 button_pareja1.when_pressed = handle_button_pareja1
 button_pareja2.when_pressed = handle_button_pareja2
+
+
+
+@app.get("/{rest_of_path:path}")
+async def react_app(req: Request, rest_of_path: str):
+    return templates.TemplateResponse('index.html', { 'request': req })
 
 # server
 if __name__ == "__main__":
