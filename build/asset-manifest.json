@@ -1,0 +1,20 @@
+{
+  "files": {
+    "main.css": "/static/css/main.809d43a1.chunk.css",
+    "main.js": "/static/js/main.1db8625f.chunk.js",
+    "main.js.map": "/static/js/main.1db8625f.chunk.js.map",
+    "runtime~main.js": "/static/js/runtime~main.94c5bc57.js",
+    "runtime~main.js.map": "/static/js/runtime~main.94c5bc57.js.map",
+    "static/css/2.98036eff.chunk.css": "/static/css/2.98036eff.chunk.css",
+    "static/js/2.3a79f52c.chunk.js": "/static/js/2.3a79f52c.chunk.js",
+    "static/js/2.3a79f52c.chunk.js.map": "/static/js/2.3a79f52c.chunk.js.map",
+    "static/js/3.cf2aeaea.chunk.js": "/static/js/3.cf2aeaea.chunk.js",
+    "static/js/3.cf2aeaea.chunk.js.map": "/static/js/3.cf2aeaea.chunk.js.map",
+    "index.html": "/index.html",
+    "precache-manifest.e9a6a5899fe7bf019097ac32e96a19ce.js": "/precache-manifest.e9a6a5899fe7bf019097ac32e96a19ce.js",
+    "service-worker.js": "/service-worker.js",
+    "static/css/2.98036eff.chunk.css.map": "/static/css/2.98036eff.chunk.css.map",
+    "static/css/main.809d43a1.chunk.css.map": "/static/css/main.809d43a1.chunk.css.map",
+    "static/media/marcador.css": "/static/media/Rufina-Regular.764a6041.ttf"
+  }
+}
