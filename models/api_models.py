@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Dict, Any, Union
+from typing import Dict, List, Union
 
 class Partido(BaseModel):
     pareja1Jugador1: str
@@ -10,18 +10,16 @@ class Partido(BaseModel):
 
 
 class Puntaje(BaseModel):
-    points: int = 0
-    games: int = 0
-    sets: int = 0
-
-class PuntajeActual(BaseModel):
-    puntaje_pareja_1: Puntaje
-    puntaje_pareja_2: Puntaje
-    set: int
+    points_pareja_1: int = 0
+    points_pareja_2: int = 0
+    set_actual: int = 1
+    sets_pareja_1: int = 0
+    sets_pareja_2: int = 0
+    history: List[Dict[str, int]] = []
 
 class Saque(BaseModel):
     pareja: int
 
 class WSMessage(BaseModel):
     msg_type: str
-    content: Union[Dict, Partido, PuntajeActual, None]
+    content: Union[Dict, Partido, None]

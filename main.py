@@ -13,7 +13,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from models import (
     ConnectionManager, 
     Partido,
-    PuntajeActual,
     Puntaje,
     WSMessage
 )
@@ -22,7 +21,7 @@ load_dotenv()
 device = os.getenv('DEVICE', 'PC')
 
 if device == 'PC':
-    print('import fake gpio')
+    print('importing fake gpio')
     from utils import Button
 else:
     from gpiozero import Button
@@ -50,48 +49,51 @@ app.add_middleware(
 # init config
 manager = ConnectionManager()
 match = None
-puntaje_actual = None
-puntaje_pareja_1 = None
-puntaje_pareja_2 = None
+puntaje = None
 
 # utils
 def cambiar_set():
-    puntaje_pareja_1.points = 0
-    puntaje_pareja_2.points = 0
-    puntaje_pareja_1.games = 0
-    puntaje_pareja_2.games = 0
-    puntaje_actual.set += 1
+    puntaje['points_pareja_1'] = 0
+    puntaje['points_pareja_2'] = 0
+    puntaje['set_actual'] += 1
 
 def cambiar_game():
-    puntaje_pareja_1.points = 0
-    puntaje_pareja_2.points = 0
+    puntaje['points_pareja_1'] = 0
+    puntaje['points_pareja_2'] = 0
 
-async def cambiar_puntaje(puntaje1: Puntaje, puntaje2: Puntaje):
-    global puntaje_actual, match
-    if puntaje1.games == 6 and puntaje2.games == 6:
-        puntaje1.points += 1
 
-        if puntaje1.points >= 7 and (puntaje1.points - puntaje2.points) >= 2:
-            puntaje1.games += 1
-            puntaje1.sets += 1
+async def cambiar_puntaje(p1: int, p2: int):
+    pos_set = puntaje['set_actual'] - 1
+    games_1 = puntaje['history'][pos_set][f'games_pareja_{p1}']
+    games_2 = puntaje['history'][pos_set][f'games_pareja_{p2}']
+    points_1 = puntaje[f'points_pareja_{p1}']
+    points_2 = puntaje[f'points_pareja_{p2}']
+
+
+    if games_1 == 6 and games_2 == 6:
+        puntaje[f'points_pareja_{p1}'] += 1
+
+        if points_1 >= 7 and (points_1 - points_2 >= 2):
+            puntaje['history'][pos_set][f'games_pareja_{p1}'] += 1
+            games_1 += 1
+            puntaje[f'sets_pareja_{p1}'] += 1
             await send_score()
             cambiar_set()
     else:
-        if puntaje1.points in [0, 15]:
-            puntaje1.points += 15
-        elif puntaje1.points == 30:
-            puntaje1.points += 10
-        elif puntaje1.points == 40:
+        if points_1 in [0, 15]:
+            puntaje[f'points_pareja_{p1}'] += 15
+        elif points_1 == 30:
+            puntaje[f'points_pareja_{p1}'] += 10
+        elif points_1 == 40:
             cambiar_game()
-            puntaje1.games += 1
+            puntaje['history'][pos_set][f'games_pareja_{p1}'] += 1
+            games_1 += 1
 
-    if (puntaje1.games == 6 and puntaje2.games <= 4) or (puntaje1.games == 7 and puntaje2.games in [5, 6]):
-        await send_score()
+    if (games_1 == 6 and games_2 <= 4) or (games_1 == 7 and games_2 in [5, 6]):
         cambiar_set()
-        puntaje1.sets += 1
+        puntaje[f'sets_pareja_{p1}'] += 1
 
-
-    if puntaje1.sets >= math.ceil(match.numSets / 2):
+    if puntaje[f'sets_pareja_{p1}'] >= math.ceil(match.numSets / 2):
         await send_score()
         await enviar_finalizacion()
 
@@ -102,17 +104,16 @@ async def cambiar_puntaje(puntaje1: Puntaje, puntaje2: Puntaje):
         'message': 'mensaje enviado con exito a todos los peers'
     }
 
+
 async def enviar_finalizacion():
-    global match, puntaje_actual, puntaje_pareja_1, puntaje_pareja_2
+    global match, puntaje
 
     await manager.broadcast(
         WSMessage(msg_type='info', content={'msg': construir_mensaje()})
     )
 
     match = None
-    puntaje_actual = None
-    puntaje_pareja_1 = None
-    puntaje_pareja_2 = None
+    puntaje = None
 
     await manager.broadcast(
         WSMessage(msg_type='match', content=match)
@@ -121,10 +122,10 @@ async def enviar_finalizacion():
 
 def construir_mensaje():
     msg = ''
-    if puntaje_pareja_1.sets > puntaje_pareja_2.sets:
+    if puntaje['sets_pareja_1'] > puntaje['sets_pareja_2']:
         msg = f'Felicitaciones {match.pareja1Jugador1} y {match.pareja1Jugador2} han ganado el partido..!'
     
-    elif puntaje_pareja_2.sets > puntaje_pareja_1.sets:
+    elif puntaje['sets_pareja_2'] > puntaje['sets_pareja_1']:
         msg = f'Felicitaciones {match.pareja2Jugador1} y {match.pareja2Jugador2} han ganado el partido..!'
     
     else:
@@ -138,6 +139,10 @@ def construir_mensaje():
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
+    await manager.broadcast(
+        WSMessage(msg_type='match', content=match)
+    )
+    await send_score()
 
     try:
         while True:
@@ -152,25 +157,33 @@ async def websocket_endpoint(websocket: WebSocket):
 
 async def send_score():
     await manager.broadcast(
-        WSMessage(msg_type='score', content=puntaje_actual)
+        WSMessage(msg_type='score', content=puntaje)
     )
-
 
 # endpoints
 
 @app.post("/registro_partido")
 async def registro_partido(partido: Partido):
-    global match, puntaje_actual, puntaje_pareja_1, puntaje_pareja_2
+    global match, puntaje
     match = partido
-    puntaje_pareja_1 = Puntaje()
-    puntaje_pareja_2 = Puntaje()
-    puntaje_actual = PuntajeActual(
-        puntaje_pareja_1=puntaje_pareja_1,
-        puntaje_pareja_2=puntaje_pareja_2,
-        set=1
-    )
+
+    history = [{'games_pareja_1': 0, 'games_pareja_2': 0} for _ in range(partido.numSets)]
+
+    puntaje = {
+        'points_pareja_1': 0,
+        'points_pareja_2': 0,
+        'set_actual': 1,
+        'sets_pareja_1': 0,
+        'sets_pareja_2': 0,
+        'history': history
+    }
+
     await manager.broadcast(
         WSMessage(msg_type='match', content=match)
+    )
+
+    await manager.broadcast(
+        WSMessage(msg_type='score', content=puntaje)
     )
 
 @app.get("/obtener_partido")
@@ -185,9 +198,9 @@ async def obtener_partido():
 async def enviar_puntaje(pin: int):
 
     if pin == PIN_PAREJA1:
-        await cambiar_puntaje(puntaje_pareja_1, puntaje_pareja_2)
+        await cambiar_puntaje(p1=1, p2=2)
     else:
-        await cambiar_puntaje(puntaje_pareja_2, puntaje_pareja_1)
+        await cambiar_puntaje(p1=2, p2=1)
 
     return {
         'status': 'ok',
@@ -208,17 +221,26 @@ async def cambiar_saque(pareja: int):
 
 @app.get('/finalizar_partido')
 async def finalizar_partido():
-    await enviar_finalizacion()
+    global match
+
+    if match:
+        await enviar_finalizacion()
+
     return {
         'status': 'ok',
         'message': 'se ha finalizado el partido'
     }
 
+# buttons signals handle
 def handle_button_pareja1():
-    asyncio.run(cambiar_puntaje(puntaje_pareja_1, puntaje_pareja_2))
+    global match
+    if match:
+        asyncio.run(cambiar_puntaje(p1=1, p2=2))
 
 def handle_button_pareja2():
-    asyncio.run(cambiar_puntaje(puntaje_pareja_2, puntaje_pareja_1))
+    global match
+    if match:
+        asyncio.run(cambiar_puntaje(p1=2, p2=1))
 
 button_pareja1.when_pressed = handle_button_pareja1
 button_pareja2.when_pressed = handle_button_pareja2
