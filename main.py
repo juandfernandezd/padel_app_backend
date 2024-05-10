@@ -13,7 +13,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from models import (
     ConnectionManager, 
     Partido,
-    Puntaje,
     WSMessage
 )
 

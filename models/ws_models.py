@@ -8,6 +8,7 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
+        print(f'active connections: {len(self.active_connections)}')
 
     def disconnect(self, websocket: WebSocket):
         self.active_connections.remove(websocket)
@@ -17,5 +18,9 @@ class ConnectionManager:
         await websocket.send_json(message.model_dump())
 
     async def broadcast(self, message: WSMessage):
-        for connection in self.active_connections:
-            await connection.send_json(message.model_dump())
+        try:
+            for connection in self.active_connections:
+                await connection.send_json(message.model_dump())
+        except:
+            self.active_connections.remove(connection)
+            print('ws connection not found')
