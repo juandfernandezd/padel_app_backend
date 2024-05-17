@@ -7,6 +7,7 @@ class Partido(BaseModel):
     pareja2Jugador1: str
     pareja2Jugador2: str
     numSets: int
+    modoTorneo: bool = False
 
 
 class Puntaje(BaseModel):

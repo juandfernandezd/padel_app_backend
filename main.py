@@ -1,4 +1,5 @@
 import uvicorn
+import time
 import math
 import asyncio
 import os
@@ -26,11 +27,15 @@ else:
     from gpiozero import Button
     
 
-PIN_PAREJA1 = 17
-PIN_PAREJA2 = 18
+PIN1_PAREJA1 = 17
+PIN2_PAREJA1 = 27
+PIN1_PAREJA2 = 15
+PIN2_PAREJA2 = 18
 
-button_pareja1 = Button(PIN_PAREJA1)
-button_pareja2 = Button(PIN_PAREJA2)
+button1_pareja1 = Button(PIN1_PAREJA1, bounce_time=0.1)
+button2_pareja1 = Button(PIN2_PAREJA1, bounce_time=0.1)
+button1_pareja2 = Button(PIN1_PAREJA2, bounce_time=0.1)
+button2_pareja2 = Button(PIN2_PAREJA2, bounce_time=0.1)
 
 
 app = FastAPI()
@@ -71,6 +76,7 @@ async def cambiar_puntaje(p1: int, p2: int):
 
     if games_1 == 6 and games_2 == 6:
         puntaje[f'points_pareja_{p1}'] += 1
+        points_1 += 1
 
         if points_1 >= 7 and (points_1 - points_2 >= 2):
             puntaje['history'][pos_set][f'games_pareja_{p1}'] += 1
@@ -79,14 +85,36 @@ async def cambiar_puntaje(p1: int, p2: int):
             await send_score()
             cambiar_set()
     else:
-        if points_1 in [0, 15]:
-            puntaje[f'points_pareja_{p1}'] += 15
-        elif points_1 == 30:
-            puntaje[f'points_pareja_{p1}'] += 10
-        elif points_1 == 40:
-            cambiar_game()
-            puntaje['history'][pos_set][f'games_pareja_{p1}'] += 1
-            games_1 += 1
+        if match.modoTorneo:
+            if puntaje['sets_pareja_1'] == 1 and puntaje['sets_pareja_2'] == 1:
+                puntaje[f'points_pareja_{p1}'] += 1
+                points_1 += 1
+
+                if points_1 >= 10 and (points_1 - points_2 >= 2):
+                    puntaje['history'][pos_set][f'games_pareja_{p1}'] = points_1
+                    puntaje['history'][pos_set][f'games_pareja_{p2}'] = points_2
+                    puntaje[f'sets_pareja_{p1}'] += 1
+            
+            else:
+                if points_1 in [0, 15]:
+                    puntaje[f'points_pareja_{p1}'] += 15
+                elif points_1 == 30:
+                    puntaje[f'points_pareja_{p1}'] += 10
+                elif points_1 == 40:
+                    cambiar_game()
+                    puntaje['history'][pos_set][f'games_pareja_{p1}'] += 1
+                    games_1 += 1
+
+
+        else:
+            if points_1 in [0, 15]:
+                puntaje[f'points_pareja_{p1}'] += 15
+            elif points_1 == 30:
+                puntaje[f'points_pareja_{p1}'] += 10
+            elif points_1 == 40:
+                cambiar_game()
+                puntaje['history'][pos_set][f'games_pareja_{p1}'] += 1
+                games_1 += 1
 
     if (games_1 == 6 and games_2 <= 4) or (games_1 == 7 and games_2 in [5, 6]):
         cambiar_set()
@@ -110,6 +138,8 @@ async def enviar_finalizacion():
     await manager.broadcast(
         WSMessage(msg_type='info', content={'msg': construir_mensaje()})
     )
+
+    await asyncio.sleep(10)
 
     match = None
     puntaje = None
@@ -196,7 +226,7 @@ async def obtener_partido():
 @app.get('/enviar_puntaje/{pin}')
 async def enviar_puntaje(pin: int):
 
-    if pin == PIN_PAREJA1:
+    if pin in [PIN1_PAREJA1, PIN2_PAREJA1]:
         await cambiar_puntaje(p1=1, p2=2)
     else:
         await cambiar_puntaje(p1=2, p2=1)
@@ -241,8 +271,10 @@ def handle_button_pareja2():
     if match:
         asyncio.run(cambiar_puntaje(p1=2, p2=1))
 
-button_pareja1.when_pressed = handle_button_pareja1
-button_pareja2.when_pressed = handle_button_pareja2
+button1_pareja1.when_pressed = handle_button_pareja1
+button2_pareja1.when_pressed = handle_button_pareja1
+button1_pareja2.when_pressed = handle_button_pareja2
+button2_pareja2.when_pressed = handle_button_pareja2
 
 
 # server
