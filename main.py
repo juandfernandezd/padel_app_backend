@@ -32,10 +32,10 @@ PIN2_PAREJA1 = 27
 PIN1_PAREJA2 = 15
 PIN2_PAREJA2 = 18
 
-button1_pareja1 = Button(PIN1_PAREJA1, bounce_time=0.1)
-button2_pareja1 = Button(PIN2_PAREJA1, bounce_time=0.1)
-button1_pareja2 = Button(PIN1_PAREJA2, bounce_time=0.1)
-button2_pareja2 = Button(PIN2_PAREJA2, bounce_time=0.1)
+button1_pareja1 = Button(PIN1_PAREJA1)
+button2_pareja1 = Button(PIN2_PAREJA1)
+button1_pareja2 = Button(PIN1_PAREJA2)
+button2_pareja2 = Button(PIN2_PAREJA2)
 
 
 app = FastAPI()
