@@ -28,8 +28,9 @@ else:
     
 
 PIN1_PAREJA1 = 17
-PIN2_PAREJA1 = 27
-PIN1_PAREJA2 = 15
+PIN2_PAREJA1 = 15
+
+PIN1_PAREJA2 = 27
 PIN2_PAREJA2 = 18
 
 button1_pareja1 = Button(PIN1_PAREJA1, bounce_time=0.1)
