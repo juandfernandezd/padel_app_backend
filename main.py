@@ -1,6 +1,6 @@
 import uvicorn
-import time
 import math
+import time
 import asyncio
 import os
 from dotenv import load_dotenv
@@ -21,11 +21,14 @@ load_dotenv()
 device = os.getenv('DEVICE', 'PC')
 
 if device == 'PC':
-    print('importing fake gpio')
-    from utils import Button
+    print('importing fake pigpio')
+    from utils import fake_pigpio as pigpio
 else:
-    from gpiozero import Button
+    import pigpio
     
+pi = pigpio.pi()
+
+BOUNCE_TIME = 0.3
 
 PIN1_PAREJA1 = 17
 PIN2_PAREJA1 = 15
@@ -33,10 +36,14 @@ PIN2_PAREJA1 = 15
 PIN1_PAREJA2 = 27
 PIN2_PAREJA2 = 18
 
-button1_pareja1 = Button(PIN1_PAREJA1, bounce_time=0.1)
-button2_pareja1 = Button(PIN2_PAREJA1, bounce_time=0.1)
-button1_pareja2 = Button(PIN1_PAREJA2, bounce_time=0.1)
-button2_pareja2 = Button(PIN2_PAREJA2, bounce_time=0.1)
+last_pressed_pin_11 = 0
+last_pressed_pin_22 = 0
+
+pi.set_mode(PIN1_PAREJA1, pigpio.INPUT)
+pi.set_pull_up_down(PIN1_PAREJA1, pigpio.PUD_UP)
+
+pi.set_mode(PIN2_PAREJA2, pigpio.INPUT)
+pi.set_pull_up_down(PIN2_PAREJA2, pigpio.PUD_UP)
 
 
 app = FastAPI()
@@ -261,22 +268,40 @@ async def finalizar_partido():
         'message': 'se ha finalizado el partido'
     }
 
-# buttons signals handle
-def handle_button_pareja1():
-    global match
-    if match:
+def handle_button_pareja1(gpio, level, tick):
+    global last_pressed_pin_11, match
+
+    current_time = time.time()
+
+    # Ignora si el evento ocurre dentro del tiempo de rebote
+    if gpio == PIN1_PAREJA1:
+        if (current_time - last_pressed_pin_11) < BOUNCE_TIME:
+            return
+        last_pressed_pin_11 = current_time
+
+    if level == 0 and match:  # Nivel bajo indica que el botón está presionado
+        print(f"Button on pin {gpio} was pressed!")
         asyncio.run(cambiar_puntaje(p1=1, p2=2))
 
-def handle_button_pareja2():
-    global match
-    if match:
+
+def handle_button_pareja2(gpio, level, tick):
+    global last_pressed_pin_22, match
+
+    current_time = time.time()
+
+    # Ignora si el evento ocurre dentro del tiempo de rebote
+    if gpio == PIN2_PAREJA2:
+        if (current_time - last_pressed_pin_22) < BOUNCE_TIME:
+            return
+        last_pressed_pin_22 = current_time
+
+    if level == 0 and match:  # Nivel bajo indica que el botón está presionado
+        print(f"Button on pin {gpio} was pressed!")
         asyncio.run(cambiar_puntaje(p1=2, p2=1))
 
-button1_pareja1.when_pressed = handle_button_pareja1
-button2_pareja1.when_pressed = handle_button_pareja1
-button1_pareja2.when_pressed = handle_button_pareja2
-button2_pareja2.when_pressed = handle_button_pareja2
 
+pi.callback(PIN1_PAREJA1, pigpio.EITHER_EDGE, handle_button_pareja1)
+pi.callback(PIN2_PAREJA2, pigpio.EITHER_EDGE, handle_button_pareja2)
 
 # server
 if __name__ == "__main__":
