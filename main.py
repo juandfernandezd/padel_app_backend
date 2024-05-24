@@ -30,20 +30,23 @@ pi = pigpio.pi()
 
 BOUNCE_TIME = 0.3
 
-PIN1_PAREJA1 = 17
-PIN2_PAREJA1 = 15
+PAREJA1_PIN1 = 17
+PAREJA1_PIN2 = 15
+PAREJA2_PIN1 = 27
+PAREJA2_PIN2 = 18
 
-PIN1_PAREJA2 = 27
-PIN2_PAREJA2 = 18
+pines = [
+    PAREJA1_PIN1,
+    PAREJA1_PIN2,
+    PAREJA2_PIN1,
+    PAREJA2_PIN2
+]
 
-last_pressed_pin_11 = 0
-last_pressed_pin_22 = 0
+last_pressed = 0
 
-pi.set_mode(PIN1_PAREJA1, pigpio.INPUT)
-pi.set_pull_up_down(PIN1_PAREJA1, pigpio.PUD_UP)
-
-pi.set_mode(PIN2_PAREJA2, pigpio.INPUT)
-pi.set_pull_up_down(PIN2_PAREJA2, pigpio.PUD_UP)
+for pin in pines:
+    pi.set_mode(pin, pigpio.INPUT)
+    pi.set_pull_up_down(pin, pigpio.PUD_UP)
 
 
 app = FastAPI()
@@ -75,6 +78,8 @@ def cambiar_game():
 
 
 async def cambiar_puntaje(p1: int, p2: int):
+    set_changed = False
+    score_sent = False
     pos_set = puntaje['set_actual'] - 1
     games_1 = puntaje['history'][pos_set][f'games_pareja_{p1}']
     games_2 = puntaje['history'][pos_set][f'games_pareja_{p2}']
@@ -90,8 +95,10 @@ async def cambiar_puntaje(p1: int, p2: int):
             puntaje['history'][pos_set][f'games_pareja_{p1}'] += 1
             games_1 += 1
             puntaje[f'sets_pareja_{p1}'] += 1
-            await send_score()
             cambiar_set()
+            await send_score()
+            set_changed = True
+            score_sent = True
     else:
         if match.modoTorneo:
             if puntaje['sets_pareja_1'] == 1 and puntaje['sets_pareja_2'] == 1:
@@ -124,7 +131,7 @@ async def cambiar_puntaje(p1: int, p2: int):
                 puntaje['history'][pos_set][f'games_pareja_{p1}'] += 1
                 games_1 += 1
 
-    if (games_1 == 6 and games_2 <= 4) or (games_1 == 7 and games_2 in [5, 6]):
+    if (games_1 == 6 and games_2 <= 4) or (games_1 == 7 and games_2 in [5, 6]) and not set_changed:
         cambiar_set()
         puntaje[f'sets_pareja_{p1}'] += 1
 
@@ -132,7 +139,8 @@ async def cambiar_puntaje(p1: int, p2: int):
         await send_score()
         await enviar_finalizacion()
 
-    await send_score()
+    if not score_sent:
+        await send_score()
 
     return {
         'status': 'ok',
@@ -234,7 +242,7 @@ async def obtener_partido():
 @app.get('/enviar_puntaje/{pin}')
 async def enviar_puntaje(pin: int):
 
-    if pin in [PIN1_PAREJA1, PIN2_PAREJA1]:
+    if pin in [PAREJA1_PIN1, PAREJA1_PIN2]:
         await cambiar_puntaje(p1=1, p2=2)
     else:
         await cambiar_puntaje(p1=2, p2=1)
@@ -268,40 +276,47 @@ async def finalizar_partido():
         'message': 'se ha finalizado el partido'
     }
 
-def handle_button_pareja1(gpio, level, tick):
-    global last_pressed_pin_11, match
+# buttons handle
+
+def handle_button_pareja_1(gpio, level, tick):
+    global last_pressed, match
+
+    if not match:
+        return
 
     current_time = time.time()
 
     # Ignora si el evento ocurre dentro del tiempo de rebote
-    if gpio == PIN1_PAREJA1:
-        if (current_time - last_pressed_pin_11) < BOUNCE_TIME:
+    if gpio in [PAREJA1_PIN1, PAREJA1_PIN2]:
+        if (current_time - last_pressed) < BOUNCE_TIME:
             return
-        last_pressed_pin_11 = current_time
+        last_pressed = current_time
 
-    if level == 0 and match:  # Nivel bajo indica que el botón está presionado
-        print(f"Button on pin {gpio} was pressed!")
+    if level == 0:  # Nivel bajo indica que el botón está presionado
         asyncio.run(cambiar_puntaje(p1=1, p2=2))
 
 
-def handle_button_pareja2(gpio, level, tick):
-    global last_pressed_pin_22, match
+def handle_button_pareja_2(gpio, level, tick):
+    global last_pressed, match
+
+    if not match:
+        return
 
     current_time = time.time()
 
-    # Ignora si el evento ocurre dentro del tiempo de rebote
-    if gpio == PIN2_PAREJA2:
-        if (current_time - last_pressed_pin_22) < BOUNCE_TIME:
+    if gpio in [PAREJA2_PIN1, PAREJA2_PIN2]:
+        if (current_time - last_pressed) < BOUNCE_TIME:
             return
-        last_pressed_pin_22 = current_time
+        last_pressed = current_time
 
-    if level == 0 and match:  # Nivel bajo indica que el botón está presionado
-        print(f"Button on pin {gpio} was pressed!")
+    if level == 0:
         asyncio.run(cambiar_puntaje(p1=2, p2=1))
 
 
-pi.callback(PIN1_PAREJA1, pigpio.EITHER_EDGE, handle_button_pareja1)
-pi.callback(PIN2_PAREJA2, pigpio.EITHER_EDGE, handle_button_pareja2)
+pi.callback(PAREJA1_PIN1, pigpio.EITHER_EDGE, handle_button_pareja_1)
+pi.callback(PAREJA1_PIN2, pigpio.EITHER_EDGE, handle_button_pareja_1)
+pi.callback(PAREJA2_PIN1, pigpio.EITHER_EDGE, handle_button_pareja_2)
+pi.callback(PAREJA2_PIN2, pigpio.EITHER_EDGE, handle_button_pareja_2)
 
 # server
 if __name__ == "__main__":
