@@ -1,9 +1,7 @@
 import uvicorn
+import json
 import math
-import time
 import asyncio
-import os
-from dotenv import load_dotenv
 from fastapi import (
     FastAPI,
     WebSocket, 
@@ -16,38 +14,6 @@ from models import (
     Partido,
     WSMessage
 )
-
-load_dotenv()
-device = os.getenv('DEVICE', 'PC')
-
-if device == 'PC':
-    print('importing fake pigpio')
-    from utils import fake_pigpio as pigpio
-else:
-    import pigpio
-    
-pi = pigpio.pi()
-
-BOUNCE_TIME = 0.3
-
-PAREJA1_PIN1 = 17
-PAREJA1_PIN2 = 15
-PAREJA2_PIN1 = 27
-PAREJA2_PIN2 = 18
-
-pines = [
-    PAREJA1_PIN1,
-    PAREJA1_PIN2,
-    PAREJA2_PIN1,
-    PAREJA2_PIN2
-]
-
-last_pressed = 0
-
-for pin in pines:
-    pi.set_mode(pin, pigpio.INPUT)
-    pi.set_pull_up_down(pin, pigpio.PUD_UP)
-
 
 app = FastAPI()
 origins = ['*']
@@ -77,7 +43,8 @@ def cambiar_game():
     puntaje['points_pareja_2'] = 0
 
 
-async def cambiar_puntaje(p1: int, p2: int):
+async def cambiar_puntaje(p1: int):
+    p2 = 3 - p1
     set_changed = False
     score_sent = False
     pos_set = puntaje['set_actual'] - 1
@@ -192,9 +159,20 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         while True:
             msg = await websocket.receive_text()
-            await manager.send_personal_message(
-                WSMessage(msg_type='echo', content={'msg': msg}),
-                websocket
+            json_msg = json.loads(msg)
+            ws_msg = WSMessage(
+                msg_type=json_msg.get('msg_type'),
+                content=json_msg.get('content')
+            )
+            match ws_msg.msg_type:
+                case 'score':
+                    team = ws_msg.content.get('team')
+                    await cambiar_puntaje(p1=int(team))
+
+                case _:
+                    await manager.send_personal_message(
+                        WSMessage(msg_type='echo', content={'msg': msg}),
+                        websocket
             )
     except WebSocketDisconnect:
         manager.disconnect(websocket)
@@ -239,19 +217,6 @@ async def obtener_partido():
     }
 
 
-@app.get('/enviar_puntaje/{pin}')
-async def enviar_puntaje(pin: int):
-
-    if pin in [PAREJA1_PIN1, PAREJA1_PIN2]:
-        await cambiar_puntaje(p1=1, p2=2)
-    else:
-        await cambiar_puntaje(p1=2, p2=1)
-
-    return {
-        'status': 'ok',
-        'message': 'mensaje enviado con exito a todos los peers'
-    }
-
 
 @app.post('/cambiar_saque/{pareja}')
 async def cambiar_saque(pareja: int):
@@ -276,47 +241,6 @@ async def finalizar_partido():
         'message': 'se ha finalizado el partido'
     }
 
-# buttons handle
-
-def handle_button_pareja_1(gpio, level, tick):
-    global last_pressed, match
-
-    if not match:
-        return
-
-    current_time = time.time()
-
-    # Ignora si el evento ocurre dentro del tiempo de rebote
-    if gpio in [PAREJA1_PIN1, PAREJA1_PIN2]:
-        if (current_time - last_pressed) < BOUNCE_TIME:
-            return
-        last_pressed = current_time
-
-    if level == 0:  # Nivel bajo indica que el botón está presionado
-        asyncio.run(cambiar_puntaje(p1=1, p2=2))
-
-
-def handle_button_pareja_2(gpio, level, tick):
-    global last_pressed, match
-
-    if not match:
-        return
-
-    current_time = time.time()
-
-    if gpio in [PAREJA2_PIN1, PAREJA2_PIN2]:
-        if (current_time - last_pressed) < BOUNCE_TIME:
-            return
-        last_pressed = current_time
-
-    if level == 0:
-        asyncio.run(cambiar_puntaje(p1=2, p2=1))
-
-
-pi.callback(PAREJA1_PIN1, pigpio.EITHER_EDGE, handle_button_pareja_1)
-pi.callback(PAREJA1_PIN2, pigpio.EITHER_EDGE, handle_button_pareja_1)
-pi.callback(PAREJA2_PIN1, pigpio.EITHER_EDGE, handle_button_pareja_2)
-pi.callback(PAREJA2_PIN2, pigpio.EITHER_EDGE, handle_button_pareja_2)
 
 # server
 if __name__ == "__main__":
