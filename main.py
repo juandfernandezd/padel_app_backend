@@ -151,37 +151,57 @@ def construir_mensaje():
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
-    await manager.broadcast(
-        WSMessage(msg_type='match', content=match)
-    )
-    await send_score()
-
     try:
-        while True:
-            msg = await websocket.receive_text()
-            json_msg = json.loads(msg)
-            ws_msg = WSMessage(
-                msg_type=json_msg.get('msg_type'),
-                content=json_msg.get('content')
+
+        if match:
+            # enviar datos del partido y del puntaje solo al dispositivo que se acaba de conectar
+            await manager.send_personal_message(
+                WSMessage(msg_type="match", content=match),
+                websocket
             )
-            match ws_msg.msg_type:
-                case 'score':
-                    team = ws_msg.content.get('team')
-                    await cambiar_puntaje(p1=int(team))
+            await manager.send_personal_message(
+                WSMessage(msg_type="score", content=puntaje),
+                websocket
+            )
+
+        while True:
+            ws_msg = await websocket.receive_json()
+            msg_type = ws_msg.get("msg_type")
+            content  = ws_msg.get("content", {})
+
+            match msg_type:
+                case "hello":
+                    device_type = ws_msg.get("device", "unknown")
+                    manager.set_device(websocket, device_type)
+
+                case "score":
+                    if not match:
+                        await manager.send_personal_message(
+                            WSMessage(msg_type="echo", content={"message": "No hay un partido en curso", "status": "error"}),
+                            websocket
+                        )
+                        continue
+
+                    team = int(content.get("team"))
+                    await cambiar_puntaje(p1=team)
 
                 case _:
                     await manager.send_personal_message(
-                        WSMessage(msg_type='echo', content={'msg': msg}),
+                        WSMessage(msg_type="echo", content=ws_msg),
                         websocket
-            )
+                    )
+
     except WebSocketDisconnect:
+        pass
+    finally:
         manager.disconnect(websocket)
 
 
 async def send_score():
     await manager.broadcast(
-        WSMessage(msg_type='score', content=puntaje)
+        WSMessage(msg_type='score', content=puntaje), only_device="screen"
     )
+
 
 # endpoints
 
@@ -202,11 +222,13 @@ async def registro_partido(partido: Partido):
     }
 
     await manager.broadcast(
-        WSMessage(msg_type='match', content=match)
+        WSMessage(msg_type='match', content=match),
+        only_device="screen"
     )
 
     await manager.broadcast(
-        WSMessage(msg_type='score', content=puntaje)
+        WSMessage(msg_type='score', content=puntaje),
+        only_device="screen"
     )
 
 @app.get("/obtener_partido")
