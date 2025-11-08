@@ -2,6 +2,7 @@ import uvicorn
 import json
 import math
 import asyncio
+import copy
 from fastapi import (
     FastAPI,
     WebSocket, 
@@ -31,6 +32,18 @@ app.add_middleware(
 manager = ConnectionManager()
 match = None
 puntaje = None
+puntaje_history: list[dict] = []
+
+def snapshot_puntaje():
+    if puntaje is not None:
+        puntaje_history.append(copy.deepcopy(puntaje))
+
+def restore_last_puntaje() -> bool:
+    global puntaje
+    if puntaje_history:
+        puntaje = puntaje_history.pop()
+        return True
+    return False
 
 # utils
 def cambiar_set():
@@ -44,6 +57,7 @@ def cambiar_game():
 
 
 async def cambiar_puntaje(p1: int):
+    snapshot_puntaje()
     p2 = 3 - p1
     set_changed = False
     score_sent = False
@@ -116,7 +130,7 @@ async def cambiar_puntaje(p1: int):
 
 
 async def enviar_finalizacion():
-    global match, puntaje
+    global match, puntaje, puntaje_history
 
     await manager.broadcast(
         WSMessage(msg_type='info', content={'msg': construir_mensaje()})
@@ -126,9 +140,10 @@ async def enviar_finalizacion():
 
     match = None
     puntaje = None
+    puntaje_history = []
 
     await manager.broadcast(
-        WSMessage(msg_type='match', content=match)
+        WSMessage(msg_type='match', content=match, only_device="screen")
     )
 
 
@@ -185,6 +200,22 @@ async def websocket_endpoint(websocket: WebSocket):
                     team = int(content.get("team"))
                     await cambiar_puntaje(p1=team)
 
+                case "go_back":
+                    if not match or puntaje is None:
+                        await manager.send_personal_message(
+                            WSMessage(msg_type="echo", content={"message": "No hay partido activo", "status": "error"}),
+                            websocket
+                        )
+                        continue
+
+                    if restore_last_puntaje(): 
+                        await send_score()
+                    else:
+                        await manager.send_personal_message(
+                            WSMessage(msg_type="echo", content={"message": "No hay estado previo", "status": "error"}),
+                            websocket
+                        )
+
                 case _:
                     await manager.send_personal_message(
                         WSMessage(msg_type="echo", content=ws_msg),
@@ -207,7 +238,7 @@ async def send_score():
 
 @app.post("/registro_partido")
 async def registro_partido(partido: Partido):
-    global match, puntaje
+    global match, puntaje, puntaje_history
     match = partido
 
     history = [{'games_pareja_1': 0, 'games_pareja_2': 0} for _ in range(partido.numSets)]
@@ -220,6 +251,9 @@ async def registro_partido(partido: Partido):
         'sets_pareja_2': 0,
         'history': history
     }
+
+    puntaje_history = []
+    snapshot_puntaje()
 
     await manager.broadcast(
         WSMessage(msg_type='match', content=match),
@@ -242,6 +276,8 @@ async def obtener_partido():
 
 @app.post('/cambiar_saque/{pareja}')
 async def cambiar_saque(pareja: int):
+    snapshot_puntaje()
+
     await manager.broadcast(
         WSMessage(msg_type='serve', content={'pareja': pareja})
     )
