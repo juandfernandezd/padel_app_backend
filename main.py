@@ -1,9 +1,8 @@
 import uvicorn
-import time
+import json
 import math
 import asyncio
-import os
-from dotenv import load_dotenv
+import copy
 from fastapi import (
     FastAPI,
     WebSocket, 
@@ -16,28 +15,6 @@ from models import (
     Partido,
     WSMessage
 )
-
-load_dotenv()
-device = os.getenv('DEVICE', 'PC')
-
-if device == 'PC':
-    print('importing fake gpio')
-    from utils import Button
-else:
-    from gpiozero import Button
-    
-
-PIN1_PAREJA1 = 17
-PIN2_PAREJA1 = 15
-
-PIN1_PAREJA2 = 27
-PIN2_PAREJA2 = 18
-
-button1_pareja1 = Button(PIN1_PAREJA1, bounce_time=0.1)
-button2_pareja1 = Button(PIN2_PAREJA1, bounce_time=0.1)
-button1_pareja2 = Button(PIN1_PAREJA2, bounce_time=0.1)
-button2_pareja2 = Button(PIN2_PAREJA2, bounce_time=0.1)
-
 
 app = FastAPI()
 origins = ['*']
@@ -55,6 +32,18 @@ app.add_middleware(
 manager = ConnectionManager()
 match = None
 puntaje = None
+puntaje_history: list[dict] = []
+
+def snapshot_puntaje():
+    if puntaje is not None:
+        puntaje_history.append(copy.deepcopy(puntaje))
+
+def restore_last_puntaje() -> bool:
+    global puntaje
+    if puntaje_history:
+        puntaje = puntaje_history.pop()
+        return True
+    return False
 
 # utils
 def cambiar_set():
@@ -67,7 +56,11 @@ def cambiar_game():
     puntaje['points_pareja_2'] = 0
 
 
-async def cambiar_puntaje(p1: int, p2: int):
+async def cambiar_puntaje(p1: int):
+    snapshot_puntaje()
+    p2 = 3 - p1
+    set_changed = False
+    score_sent = False
     pos_set = puntaje['set_actual'] - 1
     games_1 = puntaje['history'][pos_set][f'games_pareja_{p1}']
     games_2 = puntaje['history'][pos_set][f'games_pareja_{p2}']
@@ -83,8 +76,10 @@ async def cambiar_puntaje(p1: int, p2: int):
             puntaje['history'][pos_set][f'games_pareja_{p1}'] += 1
             games_1 += 1
             puntaje[f'sets_pareja_{p1}'] += 1
-            await send_score()
             cambiar_set()
+            await send_score()
+            set_changed = True
+            score_sent = True
     else:
         if match.modoTorneo:
             if puntaje['sets_pareja_1'] == 1 and puntaje['sets_pareja_2'] == 1:
@@ -117,7 +112,7 @@ async def cambiar_puntaje(p1: int, p2: int):
                 puntaje['history'][pos_set][f'games_pareja_{p1}'] += 1
                 games_1 += 1
 
-    if (games_1 == 6 and games_2 <= 4) or (games_1 == 7 and games_2 in [5, 6]):
+    if (games_1 == 6 and games_2 <= 4) or (games_1 == 7 and games_2 in [5, 6]) and not set_changed:
         cambiar_set()
         puntaje[f'sets_pareja_{p1}'] += 1
 
@@ -125,7 +120,8 @@ async def cambiar_puntaje(p1: int, p2: int):
         await send_score()
         await enviar_finalizacion()
 
-    await send_score()
+    if not score_sent:
+        await send_score()
 
     return {
         'status': 'ok',
@@ -134,7 +130,7 @@ async def cambiar_puntaje(p1: int, p2: int):
 
 
 async def enviar_finalizacion():
-    global match, puntaje
+    global match, puntaje, puntaje_history
 
     await manager.broadcast(
         WSMessage(msg_type='info', content={'msg': construir_mensaje()})
@@ -144,9 +140,10 @@ async def enviar_finalizacion():
 
     match = None
     puntaje = None
+    puntaje_history = []
 
     await manager.broadcast(
-        WSMessage(msg_type='match', content=match)
+        WSMessage(msg_type='match', content=match, only_device="screen")
     )
 
 
@@ -169,32 +166,79 @@ def construir_mensaje():
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
-    await manager.broadcast(
-        WSMessage(msg_type='match', content=match)
-    )
-    await send_score()
-
     try:
-        while True:
-            msg = await websocket.receive_text()
+
+        if match:
+            # enviar datos del partido y del puntaje solo al dispositivo que se acaba de conectar
             await manager.send_personal_message(
-                WSMessage(msg_type='echo', content={'msg': msg}),
+                WSMessage(msg_type="match", content=match),
                 websocket
             )
+            await manager.send_personal_message(
+                WSMessage(msg_type="score", content=puntaje),
+                websocket
+            )
+
+        while True:
+            ws_msg = await websocket.receive_json()
+            msg_type = ws_msg.get("msg_type")
+            content  = ws_msg.get("content", {})
+
+            match msg_type:
+                case "hello":
+                    device_type = ws_msg.get("device", "unknown")
+                    manager.set_device(websocket, device_type)
+
+                case "score":
+                    if not match:
+                        await manager.send_personal_message(
+                            WSMessage(msg_type="echo", content={"message": "No hay un partido en curso", "status": "error"}),
+                            websocket
+                        )
+                        continue
+
+                    team = int(content.get("team"))
+                    await cambiar_puntaje(p1=team)
+
+                case "go_back":
+                    if not match or puntaje is None:
+                        await manager.send_personal_message(
+                            WSMessage(msg_type="echo", content={"message": "No hay partido activo", "status": "error"}),
+                            websocket
+                        )
+                        continue
+
+                    if restore_last_puntaje(): 
+                        await send_score()
+                    else:
+                        await manager.send_personal_message(
+                            WSMessage(msg_type="echo", content={"message": "No hay estado previo", "status": "error"}),
+                            websocket
+                        )
+
+                case _:
+                    await manager.send_personal_message(
+                        WSMessage(msg_type="echo", content=ws_msg),
+                        websocket
+                    )
+
     except WebSocketDisconnect:
+        pass
+    finally:
         manager.disconnect(websocket)
 
 
 async def send_score():
     await manager.broadcast(
-        WSMessage(msg_type='score', content=puntaje)
+        WSMessage(msg_type='score', content=puntaje), only_device="screen"
     )
+
 
 # endpoints
 
 @app.post("/registro_partido")
 async def registro_partido(partido: Partido):
-    global match, puntaje
+    global match, puntaje, puntaje_history
     match = partido
 
     history = [{'games_pareja_1': 0, 'games_pareja_2': 0} for _ in range(partido.numSets)]
@@ -208,12 +252,17 @@ async def registro_partido(partido: Partido):
         'history': history
     }
 
+    puntaje_history = []
+    snapshot_puntaje()
+
     await manager.broadcast(
-        WSMessage(msg_type='match', content=match)
+        WSMessage(msg_type='match', content=match),
+        only_device="screen"
     )
 
     await manager.broadcast(
-        WSMessage(msg_type='score', content=puntaje)
+        WSMessage(msg_type='score', content=puntaje),
+        only_device="screen"
     )
 
 @app.get("/obtener_partido")
@@ -224,22 +273,11 @@ async def obtener_partido():
     }
 
 
-@app.get('/enviar_puntaje/{pin}')
-async def enviar_puntaje(pin: int):
-
-    if pin in [PIN1_PAREJA1, PIN2_PAREJA1]:
-        await cambiar_puntaje(p1=1, p2=2)
-    else:
-        await cambiar_puntaje(p1=2, p2=1)
-
-    return {
-        'status': 'ok',
-        'message': 'mensaje enviado con exito a todos los peers'
-    }
-
 
 @app.post('/cambiar_saque/{pareja}')
 async def cambiar_saque(pareja: int):
+    snapshot_puntaje()
+
     await manager.broadcast(
         WSMessage(msg_type='serve', content={'pareja': pareja})
     )
@@ -260,22 +298,6 @@ async def finalizar_partido():
         'status': 'ok',
         'message': 'se ha finalizado el partido'
     }
-
-# buttons signals handle
-def handle_button_pareja1():
-    global match
-    if match:
-        asyncio.run(cambiar_puntaje(p1=1, p2=2))
-
-def handle_button_pareja2():
-    global match
-    if match:
-        asyncio.run(cambiar_puntaje(p1=2, p2=1))
-
-button1_pareja1.when_pressed = handle_button_pareja1
-button2_pareja1.when_pressed = handle_button_pareja1
-button1_pareja2.when_pressed = handle_button_pareja2
-button2_pareja2.when_pressed = handle_button_pareja2
 
 
 # server
